@@ -3,7 +3,6 @@ import json
 import os
 import re
 import threading
-import time
 import uuid
 from pathlib import Path
 
@@ -13,19 +12,21 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
 UPLOAD_DIR = Path("uploads")
 OUTPUT_DIR = Path("outputs")
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# Job store: job_id -> {status, progress, total, log, result_path, error}
 jobs = {}
 
-VAT = 1.18
-DELAY_SEC = 1.0
-TOP_N = 2
+# ── env-controlled settings ──
+VAT         = float(os.environ.get("VAT", 1.18))
+DELAY_SEC   = float(os.environ.get("DELAY_SEC", 1.0))
+BATCH_SIZE  = int(os.environ.get("BATCH_SIZE", 10))
+TOP_N_LOCAL  = int(os.environ.get("TOP_N_LOCAL", 2))   # חנויות פיזיות
+TOP_N_ONLINE = int(os.environ.get("TOP_N_ONLINE", 1))  # אונליין
 
 DEFAULT_CITIES = [
     {"name": "טירת כרמל", "code1": "9000", "code2": "2100"},
@@ -33,59 +34,117 @@ DEFAULT_CITIES = [
     {"name": "ביתר עילית", "code1": "9000", "code2": "3400"},
 ]
 
-
-# ──────────────────────────────────────────
+# ────────────────────────────────────────
 # Excel parser
-# ──────────────────────────────────────────
+# ────────────────────────────────────────
 def read_supplier_file(path: str) -> list:
     wb = openpyxl.load_workbook(path)
     ws = wb.active
     products = []
     current_category = ""
+    header_found = False
 
     for row in ws.iter_rows(values_only=True):
+        # Detect header row
+        if not header_found:
+            row_text = " ".join(str(v or "") for v in row)
+            if "ברקוד" in row_text:
+                header_found = True
+            elif any(v and isinstance(v, str) and len(v.strip()) > 3
+                     and not str(v).startswith("יח") for v in row):
+                # category candidate before header
+                cat = next((str(v).strip() for v in row
+                            if v and isinstance(v, str) and len(str(v).strip()) > 3), "")
+                if cat:
+                    current_category = cat
+            continue
+
         b = row[1] if len(row) > 1 else None
         c = row[2] if len(row) > 2 else None
         d = row[3] if len(row) > 3 else None
         f = row[5] if len(row) > 5 else None
 
+        # Barcode row
         if b and isinstance(b, (int, float)) and len(str(int(b))) >= 12:
             barcode = str(int(b))
-            name = str(c or "").strip()
-            price_list = float(d) if d and isinstance(d, (int, float)) else 0.0
-            price_buy = float(f) if f and isinstance(f, (int, float)) else price_list
+            name = str(c or "").strip().strip('"\'')
+            price_list = round(float(d), 4) if isinstance(d, (int, float)) else 0.0
+            price_buy  = round(float(f), 4) if isinstance(f, (int, float)) else price_list
             products.append({
                 "category": current_category,
                 "barcode": barcode,
                 "name": name,
-                "price_list_ex_vat": round(price_list, 4),
-                "price_buy_ex_vat": round(price_buy, 4),
+                "price_list_ex_vat": price_list,
+                "price_buy_ex_vat":  price_buy,
                 "price_buy_inc_vat": round(price_buy * VAT, 2),
                 "chp": {}
             })
-        elif b is None or b == 0:
-            a = row[0] if len(row) > 0 else None
-            cat_text = str(a or c or "").strip()
-            if cat_text and len(cat_text) < 60 and not cat_text.startswith("יח'") and cat_text not in ("0", ""):
-                current_category = cat_text
+        else:
+            # Category row — look for a non-empty text cell
+            for v in row:
+                if v and isinstance(v, str):
+                    t = v.strip().strip('"\'')
+                    if t and len(t) > 2 and not t.startswith("יח"):
+                        current_category = t
+                        break
 
     return products
 
 
-# ──────────────────────────────────────────
-# CHP scraper (Playwright)
-# ──────────────────────────────────────────
-async def extract_prices(page) -> list:
-    results = []
+# ────────────────────────────────────────
+# CHP scraper
+# ────────────────────────────────────────
+def build_url(barcode, city):
+    from urllib.parse import quote
+    return f"https://chp.co.il/{quote(city['name'])}/{city['code1']}/{city['code2']}/{barcode}/0"
+
+
+async def extract_prices(page):
+    """Returns {'local': [...], 'online': [...]}"""
+    local, online = [], []
     try:
+        # CHP has two separate sections: מחירים בקרבת / תוצאות מחנויות באינטרנט
+        # We detect which table is which by looking for header text on the page
+        sections = await page.query_selector_all("section, div[class*='result'], div[class*='store']")
+
         tables = await page.query_selector_all("table")
+        current_is_online = False
+
         for table in tables:
+            # Check if a heading near this table contains 'אינטרנט'
+            try:
+                prev = await table.evaluate("""el => {
+                    let node = el.previousElementSibling;
+                    while(node) {
+                        if(node.textContent && node.textContent.includes('אינטרנט')) return 'online';
+                        if(node.textContent && (node.textContent.includes('קרבת') || node.textContent.includes('מחירים ב'))) return 'local';
+                        node = node.previousElementSibling;
+                    }
+                    // walk up
+                    let p = el.parentElement;
+                    while(p) {
+                        let h = p.querySelector('h2,h3,h4,strong,b');
+                        if(h && h.textContent.includes('אינטרנט')) return 'online';
+                        if(h && h.textContent.includes('קרבת')) return 'local';
+                        p = p.parentElement;
+                    }
+                    return 'unknown';
+                }""")
+                if prev == 'online':
+                    current_is_online = True
+                elif prev == 'local':
+                    current_is_online = False
+            except Exception:
+                pass
+
             headers = await table.query_selector_all("th")
             header_texts = [t.strip() for t in [await h.inner_text() for h in headers]]
             if "מחיר" not in header_texts:
                 continue
+
             col = {t: i for i, t in enumerate(header_texts)}
             rows = await table.query_selector_all("tr")
+
             for row in rows[1:]:
                 cells = await row.query_selector_all("td")
                 if not cells:
@@ -94,32 +153,73 @@ async def extract_prices(page) -> list:
                 def sc(idx):
                     return cells[idx] if idx < len(cells) else None
 
-                network = (await sc(col.get("רשת", -1)).inner_text()).strip() if col.get("רשת") is not None and sc(col["רשת"]) else ""
-                store   = (await sc(col.get("שם החנות", -1)).inner_text()).strip() if col.get("שם החנות") is not None and sc(col["שם החנות"]) else ""
+                network, store = "", ""
                 price, sale = None, None
 
-                if col.get("מחיר") is not None:
-                    el = sc(col["מחיר"])
-                    if el:
-                        m = re.search(r"[\d.]+", await el.inner_text())
-                        if m: price = float(m.group())
+                if "רשת" in col and sc(col["רשת"]):
+                    network = (await sc(col["רשת"]).inner_text()).strip()
+                if "שם החנות" in col and sc(col["שם החנות"]):
+                    store = (await sc(col["שם החנות"]).inner_text()).strip()
+                if "אתר אינטרנט" in col:
+                    current_is_online = True
 
-                if col.get("מבצע") is not None:
-                    el = sc(col["מבצע"])
-                    if el:
-                        m = re.search(r"\*\s*([\d.]+)", await el.inner_text())
-                        if m: sale = float(m.group(1))
+                if "מחיר" in col and sc(col["מחיר"]):
+                    txt = await sc(col["מחיר"]).inner_text()
+                    m = re.search(r"(\d+\.?\d*)", txt.strip())
+                    if m:
+                        price = float(m.group(1))
+
+                if "מבצע" in col and sc(col["מבצע"]):
+                    txt = await sc(col["מבצע"]).inner_text()
+                    m = re.search(r"\*\s*(\d+\.?\d*)", txt)
+                    if m:
+                        sale = float(m.group(1))
 
                 effective = sale if sale else price
                 if effective and effective > 0:
-                    results.append({"network": network, "store": store,
-                                    "price": price, "sale": sale, "effective": effective})
-    except Exception:
+                    entry = {
+                        "network": network,
+                        "store": store,
+                        "price": price,
+                        "sale": sale,
+                        "effective": effective,
+                        "is_online": current_is_online
+                    }
+                    if current_is_online:
+                        online.append(entry)
+                    else:
+                        local.append(entry)
+
+    except Exception as e:
         pass
-    return results
+
+    local.sort(key=lambda x: x["effective"])
+    online.sort(key=lambda x: x["effective"])
+    return {"local": local, "online": online}
 
 
-async def scrape_job(job_id: str, products: list, cities: list):
+async def scrape_batch(page, batch, city, job, delay):
+    for prod in batch:
+        url = build_url(prod["barcode"], city)
+        for attempt in range(3):
+            try:
+                await page.goto(url, wait_until="networkidle", timeout=18000)
+                await asyncio.sleep(0.5)
+                data = await extract_prices(page)
+                prod["chp"][city["name"]] = data
+                break
+            except Exception:
+                if attempt < 2:
+                    await asyncio.sleep(2)
+                else:
+                    prod["chp"][city["name"]] = {"local": [], "online": []}
+
+        job["progress"] += 1
+        job["log"] = f"{prod['name'][:35]} / {city['name']}"
+        await asyncio.sleep(delay)
+
+
+async def scrape_job(job_id, products, cities, delay, batch_size):
     from playwright.async_api import async_playwright
 
     job = jobs[job_id]
@@ -134,35 +234,17 @@ async def scrape_job(job_id: str, products: list, cities: list):
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
                 viewport={"width": 1280, "height": 800}
             )
-            page = await context.new_page()
 
-            for pi, prod in enumerate(products):
-                prod["chp"] = {}
-                for city in cities:
-                    from urllib.parse import quote
-                    url = f"https://chp.co.il/{quote(city['name'])}/{city['code1']}/{city['code2']}/{prod['barcode']}/0"
-
-                    for attempt in range(3):
-                        try:
-                            await page.goto(url, wait_until="networkidle", timeout=15000)
-                            await asyncio.sleep(0.4)
-                            prices = await extract_prices(page)
-                            break
-                        except Exception:
-                            if attempt < 2:
-                                await asyncio.sleep(2)
-                            else:
-                                prices = []
-
-                    prices.sort(key=lambda x: x["effective"])
-                    prod["chp"][city["name"]] = prices[:TOP_N]
-                    job["progress"] += 1
-                    job["log"] = f"{prod['name'][:35]} / {city['name']}"
-                    await asyncio.sleep(DELAY_SEC)
+            for city in cities:
+                # Process in batches — each batch gets its own page (parallel)
+                batches = [products[i:i+batch_size] for i in range(0, len(products), batch_size)]
+                for batch in batches:
+                    page = await context.new_page()
+                    await scrape_batch(page, batch, city, job, delay)
+                    await page.close()
 
             await browser.close()
 
-        # Write result Excel
         result_path = OUTPUT_DIR / f"{job_id}.xlsx"
         write_results(products, cities, str(result_path))
         job["status"] = "done"
@@ -173,14 +255,14 @@ async def scrape_job(job_id: str, products: list, cities: list):
         job["error"] = str(e)
 
 
-def run_scrape_thread(job_id, products, cities):
-    asyncio.run(scrape_job(job_id, products, cities))
+def run_scrape_thread(job_id, products, cities, delay, batch_size):
+    asyncio.run(scrape_job(job_id, products, cities, delay, batch_size))
 
 
-# ──────────────────────────────────────────
+# ────────────────────────────────────────
 # Excel writer
-# ──────────────────────────────────────────
-def write_results(products: list, cities: list, output_path: str):
+# ────────────────────────────────────────
+def write_results(products, cities, output_path):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "תוצאות CHP"
@@ -190,144 +272,231 @@ def write_results(products: list, cities: list, output_path: str):
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     BLUE = "1a73e8"
     WHITE = "FFFFFF"
-    CITY_COLORS = ["DCE8FB", "D4F0E8", "FEF3D0", "F3E8FF", "FFE8E8"]
-    CAT_BG = "E8F0FE"
+    CITY_COLORS  = ["DCE8FB", "D4F0E8", "FEF3D0", "F3E8FF", "FFE8E8"]
+    LOCAL_HDR    = "4A90D9"
+    ONLINE_HDR   = "27AE60"
+    CAT_BG       = "E8F0FE"
 
-    def cell(r, c, val="", bold=False, bg=None, fg="000000", align="right", fmt=None, wrap=False):
-        cl = ws.cell(row=r, column=c, value=val)
-        cl.font = Font(name="Arial", bold=bold, color=fg, size=10)
+    def c(r, col, val="", bold=False, bg=None, fg="000000",
+          align="right", fmt=None, wrap=False, size=10):
+        cl = ws.cell(row=r, column=col, value=val)
+        cl.font = Font(name="Arial", bold=bold, color=fg, size=size)
         if bg:
             cl.fill = PatternFill("solid", fgColor=bg)
-        cl.alignment = Alignment(horizontal=align, vertical="center", wrap_text=wrap, readingOrder=2)
+        cl.alignment = Alignment(horizontal=align, vertical="center",
+                                  wrap_text=wrap, readingOrder=2)
         cl.border = border
         if fmt:
             cl.number_format = fmt
         return cl
 
-    FIXED = 5
-    city_starts = {}
-    col = FIXED + 1
-    for city in cities:
-        city_starts[city["name"]] = col
-        col += TOP_N * 2 + 1
-    TOTAL_COLS = col - 1
+    FIXED = 5  # category, name, barcode, price ex-vat, price inc-vat
 
-    # Title
+    # columns per city: TOP_N_LOCAL*(store+price) + local_min + TOP_N_ONLINE*(store+price) + online_min
+    cols_per_city = TOP_N_LOCAL * 2 + 1 + TOP_N_ONLINE * 2 + 1
+    city_starts = {}
+    col_idx = FIXED + 1
+    for city in cities:
+        city_starts[city["name"]] = col_idx
+        col_idx += cols_per_city
+    TOTAL_COLS = col_idx - 1
+
+    # ── Row 1: title ──
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=TOTAL_COLS)
-    c = ws.cell(row=1, column=1, value="📊  השוואת מחירי CHP — תוצאות סריקה")
-    c.font = Font(name="Arial", bold=True, size=13, color=WHITE)
-    c.fill = PatternFill("solid", fgColor=BLUE)
-    c.alignment = Alignment(horizontal="center", vertical="center", readingOrder=2)
+    cl = ws.cell(row=1, column=1, value="📊  השוואת מחירי CHP — תוצאות סריקה")
+    cl.font = Font(name="Arial", bold=True, size=13, color=WHITE)
+    cl.fill = PatternFill("solid", fgColor=BLUE)
+    cl.alignment = Alignment(horizontal="center", vertical="center", readingOrder=2)
     ws.row_dimensions[1].height = 26
 
-    # Row 2: fixed headers + city merged headers
-    for ci, h in enumerate(["קטגוריה", "שם פריט", "ברקוד", "מחיר קנייה\n(ללא מע\"מ)", f"מחיר קנייה\n(+מע\"מ {int((VAT-1)*100)}%)"], 1):
-        cell(2, ci, h, bold=True, bg=BLUE, fg=WHITE, align="center", wrap=True)
+    # ── Row 2: fixed headers + city merged headers ──
+    fixed_headers = [
+        "קטגוריה", "שם פריט", "ברקוד",
+        'מחיר קנייה\n(ללא מע"מ)',
+        f'מחיר קנייה\n(+מע"מ {int((VAT-1)*100)}%)'
+    ]
+    for ci, h in enumerate(fixed_headers, 1):
+        c(2, ci, h, bold=True, bg=BLUE, fg=WHITE, align="center", wrap=True)
 
     for i, city in enumerate(cities):
         start = city_starts[city["name"]]
-        span = TOP_N * 2 + 1
-        ws.merge_cells(start_row=2, start_column=start, end_row=2, end_column=start + span - 1)
-        c = ws.cell(row=2, column=start, value=city["name"])
-        c.font = Font(name="Arial", bold=True, size=11, color="222222")
-        c.fill = PatternFill("solid", fgColor=CITY_COLORS[i % len(CITY_COLORS)])
-        c.alignment = Alignment(horizontal="center", vertical="center", readingOrder=2)
-        c.border = border
+        ws.merge_cells(start_row=2, start_column=start,
+                        end_row=2, end_column=start + cols_per_city - 1)
+        cl = ws.cell(row=2, column=start, value=city["name"])
+        cl.font = Font(name="Arial", bold=True, size=11, color="222222")
+        cl.fill = PatternFill("solid", fgColor=CITY_COLORS[i % len(CITY_COLORS)])
+        cl.alignment = Alignment(horizontal="center", vertical="center", readingOrder=2)
+        cl.border = border
     ws.row_dimensions[2].height = 22
 
-    # Row 3: sub-headers
+    # ── Row 3: sub-headers (local | online) ──
     for ci in range(1, FIXED + 1):
-        cell(3, ci, "", bg="F0F4FF")
-    col = FIXED + 1
+        c(3, ci, "", bg="F0F4FF")
+
     for i, city in enumerate(cities):
-        cc = CITY_COLORS[i % len(CITY_COLORS)]
-        for n in range(TOP_N):
-            cell(3, col,   f"#{n+1} שם עסק", bold=True, bg=cc, align="center")
-            cell(3, col+1, f"#{n+1} מחיר",   bold=True, bg=cc, align="center")
-            col += 2
-        cell(3, col, "הכי זול", bold=True, bg=cc, align="center")
-        col += 1
+        col_idx = city_starts[city["name"]]
+        # Local section header
+        local_span = TOP_N_LOCAL * 2 + 1
+        ws.merge_cells(start_row=3, start_column=col_idx,
+                        end_row=3, end_column=col_idx + local_span - 1)
+        cl = ws.cell(row=3, column=col_idx, value="🏪 חנויות פיזיות")
+        cl.font = Font(name="Arial", bold=True, size=10, color=WHITE)
+        cl.fill = PatternFill("solid", fgColor=LOCAL_HDR)
+        cl.alignment = Alignment(horizontal="center", vertical="center", readingOrder=2)
+        cl.border = border
+        col_idx += local_span
+
+        # Online section header
+        online_span = TOP_N_ONLINE * 2 + 1
+        ws.merge_cells(start_row=3, start_column=col_idx,
+                        end_row=3, end_column=col_idx + online_span - 1)
+        cl = ws.cell(row=3, column=col_idx, value="🌐 אונליין")
+        cl.font = Font(name="Arial", bold=True, size=10, color=WHITE)
+        cl.fill = PatternFill("solid", fgColor=ONLINE_HDR)
+        cl.alignment = Alignment(horizontal="center", vertical="center", readingOrder=2)
+        cl.border = border
+        col_idx += online_span
     ws.row_dimensions[3].height = 20
 
-    # Data rows
-    row_num = 4
+    # ── Row 4: field sub-headers ──
+    for ci in range(1, FIXED + 1):
+        c(4, ci, "", bg="F0F4FF")
+
+    for i, city in enumerate(cities):
+        col_idx = city_starts[city["name"]]
+        for n in range(TOP_N_LOCAL):
+            c(4, col_idx,   f"#{n+1} שם עסק",  bold=True, bg="EBF3FB", align="center")
+            c(4, col_idx+1, f"#{n+1} מחיר",    bold=True, bg="EBF3FB", align="center")
+            col_idx += 2
+        c(4, col_idx, "הכי זול", bold=True, bg="EBF3FB", align="center")
+        col_idx += 1
+        for n in range(TOP_N_ONLINE):
+            c(4, col_idx,   f"#{n+1} אתר",     bold=True, bg="E8F8F1", align="center")
+            c(4, col_idx+1, f"#{n+1} מחיר",    bold=True, bg="E8F8F1", align="center")
+            col_idx += 2
+        c(4, col_idx, "הכי זול", bold=True, bg="E8F8F1", align="center")
+        col_idx += 1
+    ws.row_dimensions[4].height = 20
+
+    # ── Data rows ──
+    row_num = 5
     last_cat = ""
+
+    def color_min(cl_cell, effective, inc_vat):
+        if not effective or not inc_vat:
+            return
+        pct = (inc_vat - effective) / inc_vat * 100
+        if pct >= 25:
+            cl_cell.fill = PatternFill("solid", fgColor="D4EDDA")
+            cl_cell.font = Font(name="Arial", bold=True, color="155724", size=10)
+        elif pct >= 10:
+            cl_cell.fill = PatternFill("solid", fgColor="FFF3CD")
+            cl_cell.font = Font(name="Arial", bold=True, color="856404", size=10)
+        else:
+            cl_cell.fill = PatternFill("solid", fgColor="F8D7DA")
+            cl_cell.font = Font(name="Arial", bold=True, color="721c24", size=10)
+
     for prod in products:
         if prod["category"] != last_cat and prod["category"]:
-            ws.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=TOTAL_COLS)
-            c = ws.cell(row=row_num, column=1, value=f"  {prod['category']}")
-            c.font = Font(name="Arial", bold=True, size=10, color="1a3a6b")
-            c.fill = PatternFill("solid", fgColor=CAT_BG)
-            c.alignment = Alignment(horizontal="right", vertical="center", readingOrder=2)
-            c.border = border
+            ws.merge_cells(start_row=row_num, start_column=1,
+                            end_row=row_num, end_column=TOTAL_COLS)
+            cl = ws.cell(row=row_num, column=1, value=f"  {prod['category']}")
+            cl.font = Font(name="Arial", bold=True, size=10, color="1a3a6b")
+            cl.fill = PatternFill("solid", fgColor=CAT_BG)
+            cl.alignment = Alignment(horizontal="right", vertical="center", readingOrder=2)
+            cl.border = border
             ws.row_dimensions[row_num].height = 18
             row_num += 1
             last_cat = prod["category"]
 
-        cell(row_num, 1, prod["category"])
-        cell(row_num, 2, prod["name"])
-        cell(row_num, 3, prod["barcode"])
-        cell(row_num, 4, prod["price_buy_ex_vat"], fmt="#,##0.00")
-        cell(row_num, 5, prod["price_buy_inc_vat"], fmt="#,##0.00", bold=True)
+        c(row_num, 1, prod["category"])
+        c(row_num, 2, prod["name"])
+        c(row_num, 3, prod["barcode"])
+        c(row_num, 4, prod["price_buy_ex_vat"],  fmt='0.00')
+        c(row_num, 5, prod["price_buy_inc_vat"],  fmt='0.00', bold=True)
 
-        col = FIXED + 1
-        for i, city in enumerate(cities):
-            city_prices = prod["chp"].get(city["name"], [])
-            min_price = None
-            for n in range(TOP_N):
-                if n < len(city_prices):
-                    e = city_prices[n]
+        inc_vat = prod["price_buy_inc_vat"]
+        col_idx = FIXED + 1
+
+        for city in cities:
+            city_data = prod["chp"].get(city["name"], {"local": [], "online": []})
+            local_prices  = city_data.get("local",  [])[:TOP_N_LOCAL]
+            online_prices = city_data.get("online", [])[:TOP_N_ONLINE]
+
+            # Local columns
+            local_min = None
+            for n in range(TOP_N_LOCAL):
+                if n < len(local_prices):
+                    e = local_prices[n]
                     label = e.get("store") or e.get("network") or "—"
-                    pval = e["effective"]
-                    if min_price is None or pval < min_price:
-                        min_price = pval
-                    cell(row_num, col,   label, bg="FAFAFA")
-                    cell(row_num, col+1, pval,  bg="FAFAFA", fmt="#,##0.00")
+                    pval  = e["effective"]
+                    if local_min is None or pval < local_min:
+                        local_min = pval
+                    c(row_num, col_idx,   label, bg="FAFAFA")
+                    c(row_num, col_idx+1, pval,  bg="FAFAFA", fmt='0.00')
                 else:
-                    cell(row_num, col,   "—", bg="FAFAFA")
-                    cell(row_num, col+1, "—", bg="FAFAFA")
-                col += 2
+                    c(row_num, col_idx,   "—", bg="FAFAFA")
+                    c(row_num, col_idx+1, "—", bg="FAFAFA")
+                col_idx += 2
 
-            if min_price:
-                inc = prod["price_buy_inc_vat"]
-                pct = ((inc - min_price) / inc * 100) if inc else None
-                cl = cell(row_num, col, min_price, fmt="#,##0.00", bold=True)
-                if pct is not None:
-                    if pct >= 25:
-                        cl.fill = PatternFill("solid", fgColor="D4EDDA")
-                        cl.font = Font(name="Arial", bold=True, color="155724", size=10)
-                    elif pct >= 10:
-                        cl.fill = PatternFill("solid", fgColor="FFF3CD")
-                        cl.font = Font(name="Arial", bold=True, color="856404", size=10)
-                    else:
-                        cl.fill = PatternFill("solid", fgColor="F8D7DA")
-                        cl.font = Font(name="Arial", bold=True, color="721c24", size=10)
-            else:
-                cell(row_num, col, "לא נמצא", fg="999999")
-            col += 1
+            min_cell = c(row_num, col_idx,
+                         local_min if local_min else "לא נמצא",
+                         fmt='0.00' if local_min else None, bold=bool(local_min))
+            if local_min:
+                color_min(min_cell, local_min, inc_vat)
+            col_idx += 1
+
+            # Online columns
+            online_min = None
+            for n in range(TOP_N_ONLINE):
+                if n < len(online_prices):
+                    e = online_prices[n]
+                    label = e.get("store") or e.get("network") or "—"
+                    pval  = e["effective"]
+                    if online_min is None or pval < online_min:
+                        online_min = pval
+                    c(row_num, col_idx,   label, bg="F0FFF8")
+                    c(row_num, col_idx+1, pval,  bg="F0FFF8", fmt='0.00')
+                else:
+                    c(row_num, col_idx,   "—", bg="F0FFF8")
+                    c(row_num, col_idx+1, "—", bg="F0FFF8")
+                col_idx += 2
+
+            min_cell = c(row_num, col_idx,
+                         online_min if online_min else "לא נמצא",
+                         fmt='0.00' if online_min else None, bold=bool(online_min))
+            if online_min:
+                color_min(min_cell, online_min, inc_vat)
+            col_idx += 1
 
         ws.row_dimensions[row_num].height = 18
         row_num += 1
 
     # Column widths
-    widths = [14, 36, 16, 14, 14]
+    widths = [14, 36, 16, 12, 12]
     for _ in cities:
-        for _ in range(TOP_N):
+        for _ in range(TOP_N_LOCAL):
+            widths += [22, 9]
+        widths.append(10)
+        for _ in range(TOP_N_ONLINE):
             widths += [22, 9]
         widths.append(10)
     for ci, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(ci)].width = w
 
-    ws.freeze_panes = "A4"
+    ws.freeze_panes = "A5"
     wb.save(output_path)
 
 
-# ──────────────────────────────────────────
+# ────────────────────────────────────────
 # Routes
-# ──────────────────────────────────────────
+# ────────────────────────────────────────
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html",
+                           vat=int((VAT-1)*100),
+                           delay=DELAY_SEC,
+                           batch_size=BATCH_SIZE)
 
 
 @app.route("/api/upload", methods=["POST"])
@@ -335,7 +504,7 @@ def upload():
     if "file" not in request.files:
         return jsonify({"error": "לא נשלח קובץ"}), 400
     f = request.files["file"]
-    if not f.filename.endswith((".xlsx", ".xls")):
+    if not f.filename.lower().endswith((".xlsx", ".xls")):
         return jsonify({"error": "קובץ חייב להיות xlsx"}), 400
 
     job_id = str(uuid.uuid4())
@@ -345,15 +514,12 @@ def upload():
     try:
         products = read_supplier_file(str(save_path))
     except Exception as e:
+        save_path.unlink(missing_ok=True)
         return jsonify({"error": f"שגיאה בקריאת הקובץ: {e}"}), 400
 
     jobs[job_id] = {
-        "status": "ready",
-        "progress": 0,
-        "total": len(products) * len(DEFAULT_CITIES),
-        "log": "",
-        "result_path": None,
-        "error": None,
+        "status": "ready", "progress": 0, "total": 0,
+        "log": "", "result_path": None, "error": None,
         "product_count": len(products),
         "upload_path": str(save_path),
     }
@@ -366,14 +532,20 @@ def start_job(job_id):
         return jsonify({"error": "job not found"}), 404
 
     data = request.json or {}
-    cities = data.get("cities", DEFAULT_CITIES)
-    upload_path = jobs[job_id]["upload_path"]
+    cities    = data.get("cities", DEFAULT_CITIES)
+    delay     = float(data.get("delay", DELAY_SEC))
+    batch_sz  = int(data.get("batch_size", BATCH_SIZE))
 
+    upload_path = jobs[job_id]["upload_path"]
     products = read_supplier_file(upload_path)
     jobs[job_id]["total"] = len(products) * len(cities)
     jobs[job_id]["status"] = "running"
 
-    t = threading.Thread(target=run_scrape_thread, args=(job_id, products, cities), daemon=True)
+    t = threading.Thread(
+        target=run_scrape_thread,
+        args=(job_id, products, cities, delay, batch_sz),
+        daemon=True
+    )
     t.start()
     return jsonify({"ok": True})
 
@@ -384,12 +556,12 @@ def job_status(job_id):
         return jsonify({"error": "not found"}), 404
     j = jobs[job_id]
     return jsonify({
-        "status": j["status"],
+        "status":   j["status"],
         "progress": j["progress"],
-        "total": j["total"],
-        "log": j["log"],
-        "error": j.get("error"),
-        "pct": int(j["progress"] / j["total"] * 100) if j["total"] > 0 else 0
+        "total":    j["total"],
+        "log":      j["log"],
+        "error":    j.get("error"),
+        "pct":      int(j["progress"] / j["total"] * 100) if j["total"] > 0 else 0
     })
 
 
@@ -400,7 +572,20 @@ def download(job_id):
     path = jobs[job_id].get("result_path")
     if not path or not Path(path).exists():
         return jsonify({"error": "קובץ לא מוכן"}), 400
-    return send_file(path, as_attachment=True, download_name="chp_results.xlsx")
+
+    response = send_file(path, as_attachment=True, download_name="chp_results.xlsx")
+
+    # Cleanup after sending
+    def cleanup():
+        import time; time.sleep(5)
+        try: Path(path).unlink(missing_ok=True)
+        except: pass
+        try: Path(jobs[job_id]["upload_path"]).unlink(missing_ok=True)
+        except: pass
+        jobs.pop(job_id, None)
+
+    threading.Thread(target=cleanup, daemon=True).start()
+    return response
 
 
 if __name__ == "__main__":
