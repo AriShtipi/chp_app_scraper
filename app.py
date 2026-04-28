@@ -198,21 +198,26 @@ async def extract_prices(page):
     return {"local": local, "online": online}
 
 
-async def scrape_batch(page, batch, city, job, delay):
-    for prod in batch:
+async def scrape_one(context, semaphore, prod, city, job, delay):
+    """Scrape a single product/city in its own tab. Semaphore limits concurrency."""
+    async with semaphore:
         url = build_url(prod["barcode"], city)
-        for attempt in range(3):
-            try:
-                await page.goto(url, wait_until="networkidle", timeout=18000)
-                await asyncio.sleep(0.5)
-                data = await extract_prices(page)
-                prod["chp"][city["name"]] = data
-                break
-            except Exception:
-                if attempt < 2:
-                    await asyncio.sleep(2)
-                else:
-                    prod["chp"][city["name"]] = {"local": [], "online": []}
+        page = await context.new_page()
+        try:
+            for attempt in range(3):
+                try:
+                    await page.goto(url, wait_until="networkidle", timeout=18000)
+                    await asyncio.sleep(0.4)
+                    data = await extract_prices(page)
+                    prod["chp"][city["name"]] = data
+                    break
+                except Exception:
+                    if attempt < 2:
+                        await asyncio.sleep(2)
+                    else:
+                        prod["chp"][city["name"]] = {"local": [], "online": []}
+        finally:
+            await page.close()
 
         job["progress"] += 1
         job["log"] = f"{prod['name'][:35]} / {city['name']}"
@@ -235,14 +240,17 @@ async def scrape_job(job_id, products, cities, delay, batch_size):
                 viewport={"width": 1280, "height": 800}
             )
 
-            for city in cities:
-                # Process in batches — each batch gets its own page (parallel)
-                batches = [products[i:i+batch_size] for i in range(0, len(products), batch_size)]
-                for batch in batches:
-                    page = await context.new_page()
-                    await scrape_batch(page, batch, city, job, delay)
-                    await page.close()
+            # Semaphore = max concurrent tabs at any moment
+            semaphore = asyncio.Semaphore(batch_size)
 
+            # All tasks: every product × every city run truly in parallel
+            tasks = [
+                scrape_one(context, semaphore, prod, city, job, delay)
+                for city in cities
+                for prod in products
+            ]
+
+            await asyncio.gather(*tasks)
             await browser.close()
 
         result_path = OUTPUT_DIR / f"{job_id}.xlsx"
