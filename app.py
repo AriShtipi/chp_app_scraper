@@ -100,102 +100,124 @@ def build_url(barcode, city):
 
 
 async def extract_prices(page):
-    """Returns {'local': [...], 'online': [...]}"""
-    local, online = [], []
+    """
+    Extracts local and online prices from a CHP product page.
+
+    Page structure (confirmed from real HTML dump):
+    - Product info table (no <th>) — skip
+    - Optional: <h4>לא נמצאו תוצאות ב[עיר]</h4>  — means no local results
+    - Optional: local results <table class="results-table"> with columns:
+        רשת | שם החנות | כתובת החנות | מבצע | מחיר
+    - <h4>תוצאות מחנויות באינטרנט ...
+    - Online results <table> with columns:
+        רשת | שם החנות | אתר אינטרנט | מבצע | מחיר
+    - Between each store: a separator row with single cell "אתר: https://..."  — skip it
+    - Sale badge text format: "8.33 *"  (number THEN asterisk)
+    - Price cell: plain text "11.90"
+    """
     try:
-        # CHP has two separate sections: מחירים בקרבת / תוצאות מחנויות באינטרנט
-        # We detect which table is which by looking for header text on the page
-        sections = await page.query_selector_all("section, div[class*='result'], div[class*='store']")
+        result = await page.evaluate("""() => {
+            const out = { local: [], online: [] };
 
-        tables = await page.query_selector_all("table")
-        current_is_online = False
+            // Split page HTML into local section and online section by the h4 heading
+            const allH4 = Array.from(document.querySelectorAll('h4'));
+            let onlineHeading = null;
+            for (const h of allH4) {
+                if (h.textContent.includes('תוצאות מחנויות באינטרנט')) {
+                    onlineHeading = h;
+                    break;
+                }
+            }
 
-        for table in tables:
-            # Check if a heading near this table contains 'אינטרנט'
-            try:
-                prev = await table.evaluate("""el => {
-                    let node = el.previousElementSibling;
-                    while(node) {
-                        if(node.textContent && node.textContent.includes('אינטרנט')) return 'online';
-                        if(node.textContent && (node.textContent.includes('קרבת') || node.textContent.includes('מחירים ב'))) return 'local';
-                        node = node.previousElementSibling;
+            // Check if local results exist
+            let localHasNoResults = false;
+            for (const h of allH4) {
+                if (h.textContent.includes('לא נמצאו תוצאות')) {
+                    localHasNoResults = true;
+                    break;
+                }
+            }
+
+            function parseTable(table, isOnline) {
+                const rows = Array.from(table.querySelectorAll('tr'));
+                if (!rows.length) return;
+
+                // Build column index from header row
+                const headers = Array.from(rows[0].querySelectorAll('th')).map(th => th.textContent.trim());
+                if (!headers.includes('מחיר')) return; // not a price table
+
+                const col = {};
+                headers.forEach((h, i) => col[h] = i);
+
+                for (let ri = 1; ri < rows.length; ri++) {
+                    const cells = Array.from(rows[ri].querySelectorAll('td'));
+
+                    // Skip separator rows (single cell starting with 'אתר:')
+                    if (cells.length === 1) continue;
+                    if (!cells.length) continue;
+
+                    const getCell = name => (col[name] !== undefined && col[name] < cells.length)
+                        ? cells[col[name]] : null;
+
+                    const network = getCell('רשת')?.textContent?.trim() || '';
+                    const store   = getCell('שם החנות')?.textContent?.trim() || '';
+
+                    // Price: plain text in cell, format "12.90"
+                    let price = null;
+                    const priceCell = getCell('מחיר');
+                    if (priceCell) {
+                        const raw = priceCell.textContent.trim().replace(/,/g, '');
+                        const m = raw.match(/(\d+\.\d+)/);
+                        if (m) price = parseFloat(m[1]);
                     }
-                    // walk up
-                    let p = el.parentElement;
-                    while(p) {
-                        let h = p.querySelector('h2,h3,h4,strong,b');
-                        if(h && h.textContent.includes('אינטרנט')) return 'online';
-                        if(h && h.textContent.includes('קרבת')) return 'local';
-                        p = p.parentElement;
+
+                    // Sale: button text format "8.33 *" (number then asterisk)
+                    // Also handles "מבצע" text (no number = member discount, skip number extraction)
+                    let sale = null;
+                    const saleCell = getCell('מבצע');
+                    if (saleCell) {
+                        const saleTxt = saleCell.textContent.replace(/,/g, '').trim();
+                        // Match pattern: number followed by space and asterisk
+                        const m = saleTxt.match(/(\d+\.\d+)\s*\*/);
+                        if (m) sale = parseFloat(m[1]);
                     }
-                    return 'unknown';
-                }""")
-                if prev == 'online':
-                    current_is_online = True
-                elif prev == 'local':
-                    current_is_online = False
-            except Exception:
-                pass
 
-            headers = await table.query_selector_all("th")
-            header_texts = [t.strip() for t in [await h.inner_text() for h in headers]]
-            if "מחיר" not in header_texts:
-                continue
-
-            col = {t: i for i, t in enumerate(header_texts)}
-            rows = await table.query_selector_all("tr")
-
-            for row in rows[1:]:
-                cells = await row.query_selector_all("td")
-                if not cells:
-                    continue
-
-                def sc(idx):
-                    return cells[idx] if idx < len(cells) else None
-
-                network, store = "", ""
-                price, sale = None, None
-
-                if "רשת" in col and sc(col["רשת"]):
-                    network = (await sc(col["רשת"]).inner_text()).strip()
-                if "שם החנות" in col and sc(col["שם החנות"]):
-                    store = (await sc(col["שם החנות"]).inner_text()).strip()
-                if "אתר אינטרנט" in col:
-                    current_is_online = True
-
-                if "מחיר" in col and sc(col["מחיר"]):
-                    txt = await sc(col["מחיר"]).inner_text()
-                    m = re.search(r"(\d+\.?\d*)", txt.strip())
-                    if m:
-                        price = float(m.group(1))
-
-                if "מבצע" in col and sc(col["מבצע"]):
-                    txt = await sc(col["מבצע"]).inner_text()
-                    m = re.search(r"\*\s*(\d+\.?\d*)", txt)
-                    if m:
-                        sale = float(m.group(1))
-
-                effective = sale if sale else price
-                if effective and effective > 0:
-                    entry = {
-                        "network": network,
-                        "store": store,
-                        "price": price,
-                        "sale": sale,
-                        "effective": effective,
-                        "is_online": current_is_online
+                    const effective = (sale !== null) ? sale : price;
+                    if (effective && effective > 0 && effective < 10000) {
+                        const entry = { network, store, price, sale, effective };
+                        if (isOnline) out.online.push(entry);
+                        else out.local.push(entry);
                     }
-                    if current_is_online:
-                        online.append(entry)
-                    else:
-                        local.append(entry)
+                }
+            }
 
+            // Find all results-table tables and classify them
+            const allTables = Array.from(document.querySelectorAll('table'));
+            allTables.forEach(table => {
+                // Determine if this table is before or after the online heading
+                let isOnline = false;
+                if (onlineHeading) {
+                    // compareDocumentPosition: 4 means table comes AFTER onlineHeading
+                    const pos = onlineHeading.compareDocumentPosition(table);
+                    isOnline = !!(pos & 4);
+                }
+
+                // Also detect by column: if it has 'אתר אינטרנט' column → online
+                const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
+                if (headers.includes('אתר אינטרנט')) isOnline = true;
+
+                if (isOnline || (!localHasNoResults && !isOnline)) {
+                    parseTable(table, isOnline);
+                }
+            });
+
+            out.local.sort((a, b) => a.effective - b.effective);
+            out.online.sort((a, b) => a.effective - b.effective);
+            return out;
+        }""")
+        return result
     except Exception as e:
-        pass
-
-    local.sort(key=lambda x: x["effective"])
-    online.sort(key=lambda x: x["effective"])
-    return {"local": local, "online": online}
+        return {"local": [], "online": []}
 
 
 async def scrape_one(context, semaphore, prod, city, job, delay):
