@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHP מחיר גורף 🛒</title>
+<style>
+  :root {
+    --blue: #1a73e8;
+    --blue-dark: #1557b0;
+    --blue-light: #e8f0fe;
+    --green: #1e8e3e;
+    --green-light: #e6f4ea;
+    --red: #d93025;
+    --red-light: #fce8e6;
+    --yellow-light: #fef9e7;
+    --gray: #5f6368;
+    --border: #dadce0;
+    --bg: #f8f9fa;
+    --white: #ffffff;
+    --radius: 12px;
+    --shadow: 0 2px 12px rgba(0,0,0,.08);
+    --shadow-lg: 0 4px 24px rgba(0,0,0,.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: var(--bg);
+    color: #202124;
+    min-height: 100vh;
+    direction: rtl;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--blue);
+    padding: 0 24px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2);
+  }
+  header h1 { color: #fff; font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  header small { color: rgba(255,255,255,.75); font-size: 12px; }
+  .header-badge { background: rgba(255,255,255,.2); color: #fff; font-size: 11px; padding: 3px 10px; border-radius: 20px; }
+
+  /* ── Main layout ── */
+  main { max-width: 860px; margin: 32px auto; padding: 0 16px; }
+
+  /* ── Card ── */
+  .card {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #202124;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title span { font-size: 18px; }
+
+  /* ── Drop zone ── */
+  .drop-zone {
+    border: 2.5px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--bg);
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--blue);
+    background: var(--blue-light);
+  }
+  .drop-zone.has-file {
+    border-color: var(--green);
+    background: var(--green-light);
+  }
+  .drop-zone input[type=file] { display: none; }
+  .drop-icon { font-size: 44px; margin-bottom: 12px; display: block; }
+  .drop-title { font-size: 16px; font-weight: 600; color: #202124; margin-bottom: 6px; }
+  .drop-sub { font-size: 13px; color: var(--gray); }
+  .drop-filename {
+    display: none;
+    margin-top: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--green);
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .drop-filename.show { display: flex; }
+
+  /* ── Cities ── */
+  .cities-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .city-card {
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all .15s;
+    user-select: none;
+    position: relative;
+  }
+  .city-card:hover { border-color: var(--blue); background: var(--blue-light); }
+  .city-card.active { border-color: var(--blue); background: var(--blue-light); }
+  .city-card .check {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all .15s;
+  }
+  .city-card.active .check { background: var(--blue); border-color: var(--blue); color: #fff; font-size: 12px; }
+  .city-info { flex: 1; }
+  .city-name { font-size: 13px; font-weight: 600; }
+  .city-code { font-size: 11px; color: var(--gray); }
+  .city-delete { color: #ccc; font-size: 16px; cursor: pointer; padding: 4px; border-radius: 4px; }
+  .city-delete:hover { color: var(--red); background: var(--red-light); }
+
+  .add-city-row {
+    display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+  }
+  .add-city-row input {
+    flex: 1; min-width: 120px;
+    padding: 8px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+    direction: rtl;
+  }
+  .add-city-row input:focus { border-color: var(--blue); }
+  .btn-add-city {
+    padding: 8px 16px;
+    background: var(--blue-light);
+    color: var(--blue);
+    border: 1.5px solid var(--blue);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .btn-add-city:hover { background: var(--blue); color: #fff; }
+
+  /* ── Settings row ── */
+  .settings-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
+  .setting-item { display: flex; flex-direction: column; gap: 4px; }
+  .setting-item label { font-size: 12px; color: var(--gray); font-weight: 500; }
+  .setting-item input {
+    padding: 7px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    width: 90px;
+    outline: none;
+    font-family: inherit;
+  }
+  .setting-item input:focus { border-color: var(--blue); }
+
+  /* ── Start button ── */
+  .btn-start {
+    width: 100%;
+    padding: 14px;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-family: inherit;
+    letter-spacing: .3px;
+  }
+  .btn-start:hover { background: var(--blue-dark); transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+  .btn-start:disabled { background: #bbb; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* ── Progress ── */
+  #progress-section { display: none; }
+  .progress-wrap {
+    background: #e8eaed;
+    border-radius: 100px;
+    height: 10px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--blue), #4da3ff);
+    border-radius: 100px;
+    transition: width .4s ease;
+    width: 0%;
+  }
+  .progress-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--gray);
+  }
+  .progress-log {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--gray);
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Done section ── */
+  #done-section { display: none; }
+  .done-box {
+    background: var(--green-light);
+    border: 1.5px solid #81c995;
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .done-text h3 { font-size: 16px; font-weight: 700; color: var(--green); }
+  .done-text p  { font-size: 13px; color: #3c763d; margin-top: 4px; }
+  .btn-download {
+    padding: 12px 28px;
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    font-family: inherit;
+    transition: all .15s;
+  }
+  .btn-download:hover { background: #157235; transform: translateY(-1px); box-shadow: var(--shadow); }
+
+  /* ── Error ── */
+  #error-section { display: none; }
+  .error-box {
+    background: var(--red-light);
+    border: 1.5px solid #f5c6cb;
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    color: var(--red);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* ── Info pills ── */
+  .info-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .pill {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--gray);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pill strong { color: #202124; }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    main { padding: 0 10px; }
+    .card { padding: 18px; }
+    .drop-zone { padding: 32px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛒 <span>CHP מחיר גורף</span></h1>
+  <small>השוואת מחירים אוטומטית</small>
+</header>
+
+<main>
+
+  <!-- Info pills -->
+  <div class="info-bar" id="info-bar" style="display:none">
+    <div class="pill">📦 <strong id="pill-products">0</strong> מוצרים</div>
+    <div class="pill">🏙 <strong id="pill-cities">0</strong> ערים</div>
+    <div class="pill">⏱ <strong id="pill-time">~0</strong> דקות</div>
+  </div>
+
+  <!-- Upload -->
+  <div class="card">
+    <div class="card-title"><span>📂</span> העלאת קובץ מחירון</div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".xlsx,.xls" />
+      <span class="drop-icon">📊</span>
+      <div class="drop-title">גרור קובץ אקסל לכאן</div>
+      <div class="drop-sub">או לחץ לבחירת קובץ · XLSX / XLS</div>
+      <div class="drop-filename" id="dropFilename">
+        <span>✅</span><span id="fileNameText"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cities -->
+  <div class="card">
+    <div class="card-title"><span>🏙</span> ערים לחיפוש</div>
+    <div class="cities-grid" id="citiesGrid"></div>
+
+    <div class="add-city-row">
+      <input type="text" id="newCityName"  placeholder="שם עיר" />
+      <input type="text" id="newCityCode1" placeholder="קוד 1" style="width:80px" />
+      <input type="text" id="newCityCode2" placeholder="קוד 2" style="width:80px" />
+      <button class="btn-add-city" onclick="addCity()">+ הוסף עיר</button>
+    </div>
+    <div style="font-size:11px;color:var(--gray);margin-top:8px">
+      💡 מבנה URL: chp.co.il/<strong>שם עיר</strong>/<strong>קוד1</strong>/<strong>קוד2</strong>/ברקוד/0
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="card">
+    <div class="card-title"><span>⚙️</span> הגדרות</div>
+    <div class="settings-row">
+      <div class="setting-item">
+        <label>% מע"מ</label>
+        <input type="number" id="vatPct" value="18" min="0" max="30" step="1" />
+      </div>
+      <div class="setting-item">
+        <label>תוצאות לעיר</label>
+        <input type="number" id="topN" value="2" min="1" max="5" step="1" />
+      </div>
+      <div class="setting-item">
+        <label>השהייה (שניות)</label>
+        <input type="number" id="delaySec" value="1.0" min="0.5" max="5" step="0.1" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Start -->
+  <button class="btn-start" id="btnStart" disabled onclick="startScan()">
+    🔍 התחל סריקה
+  </button>
+
+  <!-- Progress -->
+  <div class="card" id="progress-section" style="margin-top:20px">
+    <div class="card-title"><span>⏳</span> סריקה בתהליך...</div>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progBar"></div>
+    </div>
+    <div class="progress-stats">
+      <span id="progCount">0 / 0</span>
+      <span id="progPct">0%</span>
+    </div>
+    <div class="progress-log" id="progLog">
+      <div class="spinner"></div>
+      <span id="progText">מכין...</span>
+    </div>
+  </div>
+
+  <!-- Done -->
+  <div id="done-section" style="margin-top:20px">
+    <div class="done-box">
+      <div class="done-text">
+        <h3>✅ הסריקה הושלמה!</h3>
+        <p id="doneMsg">הקובץ מוכן להורדה</p>
+      </div>
+      <a class="btn-download" id="btnDownload" href="#">⬇ הורד אקסל תוצאות</a>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div id="error-section" style="margin-top:20px">
+    <div class="error-box">
+      <span>⚠️</span>
+      <span id="errorText"></span>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── State ──
+let jobId = null;
+let pollInterval = null;
+let productCount = 0;
+
+const cities = [
+  { name: "טירת כרמל", code1: "9000", code2: "2100", active: true },
+  { name: "אריאל",      code1: "9000", code2: "3600", active: true },
+  { name: "ביתר עילית", code1: "9000", code2: "3400", active: true },
+];
+
+// ── Render cities ──
+function renderCities() {
+  const grid = document.getElementById('citiesGrid');
+  grid.innerHTML = cities.map((c, i) => `
+    <div class="city-card ${c.active ? 'active' : ''}" onclick="toggleCity(${i})">
+      <div class="check">${c.active ? '✓' : ''}</div>
+      <div class="city-info">
+        <div class="city-name">${c.name}</div>
+        <div class="city-code">${c.code1} / ${c.code2}</div>
+      </div>
+      <span class="city-delete" onclick="event.stopPropagation();deleteCity(${i})">✕</span>
+    </div>
+  `).join('');
+  updateInfoBar();
+}
+
+function toggleCity(i) {
+  cities[i].active = !cities[i].active;
+  renderCities();
+}
+
+function deleteCity(i) {
+  cities.splice(i, 1);
+  renderCities();
+}
+
+function addCity() {
+  const name  = document.getElementById('newCityName').value.trim();
+  const code1 = document.getElementById('newCityCode1').value.trim();
+  const code2 = document.getElementById('newCityCode2').value.trim();
+  if (!name || !code1 || !code2) { alert('מלא שם עיר + קוד 1 + קוד 2'); return; }
+  cities.push({ name, code1, code2, active: true });
+  document.getElementById('newCityName').value = '';
+  document.getElementById('newCityCode1').value = '';
+  document.getElementById('newCityCode2').value = '';
+  renderCities();
+}
+
+// ── Drop zone ──
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+async function handleFile(file) {
+  const form = new FormData();
+  form.append('file', file);
+  dropZone.classList.add('has-file');
+  document.getElementById('fileNameText').textContent = file.name;
+  document.getElementById('dropFilename').classList.add('show');
+  document.querySelector('.drop-title').textContent = 'מעלה קובץ...';
+
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    jobId = data.job_id;
+    productCount = data.product_count;
+    document.querySelector('.drop-title').textContent = '✓ הקובץ הועלה';
+    document.getElementById('btnStart').disabled = false;
+    updateInfoBar();
+  } catch (e) {
+    showError(e.message);
+    dropZone.classList.remove('has-file');
+  }
+}
+
+function updateInfoBar() {
+  const activeCities = cities.filter(c => c.active);
+  const delay = parseFloat(document.getElementById('delaySec').value) || 1.0;
+  const mins = ((productCount * activeCities.length * delay) / 60).toFixed(1);
+  document.getElementById('pill-products').textContent = productCount;
+  document.getElementById('pill-cities').textContent = activeCities.length;
+  document.getElementById('pill-time').textContent = '~' + mins;
+  if (productCount > 0) document.getElementById('info-bar').style.display = 'flex';
+}
+
+// ── Start scan ──
+async function startScan() {
+  if (!jobId) return;
+  const activeCities = cities.filter(c => c.active);
+  if (!activeCities.length) { alert('בחר לפחות עיר אחת'); return; }
+
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('progress-section').style.display = 'block';
+  document.getElementById('done-section').style.display = 'none';
+  document.getElementById('error-section').style.display = 'none';
+
+  const res = await fetch(`/api/start/${jobId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cities: activeCities })
+  });
+  const data = await res.json();
+  if (data.error) { showError(data.error); return; }
+
+  pollInterval = setInterval(pollStatus, 1500);
+}
+
+async function pollStatus() {
+  if (!jobId) return;
+  try {
+    const res = await fetch(`/api/status/${jobId}`);
+    const data = await res.json();
+
+    document.getElementById('progBar').style.width = data.pct + '%';
+    document.getElementById('progCount').textContent = `${data.progress} / ${data.total}`;
+    document.getElementById('progPct').textContent = data.pct + '%';
+    document.getElementById('progText').textContent = data.log || 'סורק...';
+
+    if (data.status === 'done') {
+      clearInterval(pollInterval);
+      document.getElementById('progress-section').style.display = 'none';
+      document.getElementById('done-section').style.display = 'block';
+      document.getElementById('doneMsg').textContent = `סרקו ${productCount} מוצרים ב-${cities.filter(c=>c.active).length} ערים`;
+      document.getElementById('btnDownload').href = `/api/download/${jobId}`;
+    } else if (data.status === 'error') {
+      clearInterval(pollInterval);
+      showError(data.error || 'שגיאה לא ידועה');
+    }
+  } catch (e) { /* network hiccup */ }
+}
+
+function showError(msg) {
+  document.getElementById('error-section').style.display = 'block';
+  document.getElementById('errorText').textContent = msg;
+  document.getElementById('btnStart').disabled = false;
+}
+
+// Init
+renderCities();
+</script>
+</body>
+</html>
