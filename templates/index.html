@@ -414,7 +414,7 @@
         <h3>✅ הסריקה הושלמה!</h3>
         <p id="doneMsg">הקובץ מוכן להורדה</p>
       </div>
-      <a class="btn-download" id="btnDownload" href="#">⬇ הורד אקסל תוצאות</a>
+      <button class="btn-download" id="btnDownload" onclick="downloadAndReset()">⬇ הורד אקסל תוצאות</button>
     </div>
   </div>
 
@@ -569,7 +569,6 @@ async function pollStatus() {
       document.getElementById('progress-section').style.display = 'none';
       document.getElementById('done-section').style.display = 'block';
       document.getElementById('doneMsg').textContent = `סרקו ${productCount} מוצרים ב-${cities.filter(c=>c.active).length} ערים`;
-      document.getElementById('btnDownload').href = `/api/download/${jobId}`;
     } else if (data.status === 'error') {
       clearInterval(pollInterval);
       showError(data.error || 'שגיאה לא ידועה');
@@ -581,6 +580,34 @@ function showError(msg) {
   document.getElementById('error-section').style.display = 'block';
   document.getElementById('errorText').textContent = msg;
   document.getElementById('btnStart').disabled = false;
+}
+
+async function downloadAndReset() {
+  if (!jobId) return;
+  const btn = document.getElementById('btnDownload');
+  btn.disabled = true;
+  btn.textContent = '⏳ מוריד...';
+
+  try {
+    // Trigger download via hidden link
+    const a = document.createElement('a');
+    a.href = `/api/download/${jobId}`;
+    a.download = 'chp_results.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Wait a moment for download to start, then clean up
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Call cleanup endpoint
+    await fetch(`/api/cleanup/${jobId}`, { method: 'POST' });
+  } catch(e) {
+    // ignore
+  }
+
+  // Reload page to reset everything
+  window.location.reload();
 }
 
 // Init

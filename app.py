@@ -25,7 +25,7 @@ VAT         = float(os.environ.get("VAT",          "1.18"))
 DELAY_SEC   = float(os.environ.get("DELAY_SEC",   "1.0"))
 BATCH_SIZE  = int  (os.environ.get("BATCH_SIZE",  "10"))
 TOP_OFFLINE = int  (os.environ.get("TOP_OFFLINE", "2"))
-TOP_ONLINE  = int  (os.environ.get("TOP_ONLINE",  "1"))
+TOP_ONLINE  = int  (os.environ.get("TOP_ONLINE",  "2"))
 
 DEFAULT_CITIES = [
     {"name": "טירת כרמל", "code1": "9000", "code2": "2100"},
@@ -36,8 +36,8 @@ DEFAULT_CITIES = [
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def is_online_store(entry: dict) -> bool:
-    combined = ((entry.get("network") or "") + " " + (entry.get("store") or "")).lower()
-    return "אונליין" in combined or "online" in combined
+    """An entry is online if it was scraped from the internet-stores table section."""
+    return entry.get("section") == "online"
 
 
 def parse_price(text: str):
@@ -90,16 +90,39 @@ def read_supplier_file(path: str) -> list:
 
 # ── CHP scraper ───────────────────────────────────────────────────────────────
 async def extract_prices(page) -> list:
+    """
+    Extract prices from chp.co.il page.
+    The page has two sections separated by headings:
+      - "תוצאות מחנויות באינטרנט" → section='online'
+      - anything else (physical stores) → section='offline'
+    We detect which section a table belongs to by looking for the nearest
+    preceding heading element that contains 'אינטרנט'.
+    """
     results = []
     try:
-        tables = await page.query_selector_all("table")
-        for table in tables:
-            headers = await table.query_selector_all("th")
+        # Get all relevant elements in DOM order: headings + tables
+        elements = await page.query_selector_all("h1,h2,h3,h4,h5,h6,table")
+        current_section = "offline"  # default
+
+        for el in elements:
+            tag = await el.evaluate("e => e.tagName.toLowerCase()")
+            if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                text = (await el.inner_text()).strip()
+                if "אינטרנט" in text:
+                    current_section = "online"
+                else:
+                    current_section = "offline"
+                continue
+
+            # It's a table
+            headers = await el.query_selector_all("th")
             header_texts = [t.strip() for t in [await h.inner_text() for h in headers]]
             if "מחיר" not in header_texts:
                 continue
             col = {t: i for i, t in enumerate(header_texts)}
-            rows = await table.query_selector_all("tr")
+            rows = await el.query_selector_all("tr")
+            section_for_this_table = current_section
+
             for row in rows[1:]:
                 cells = await row.query_selector_all("td")
                 if not cells:
@@ -118,14 +141,14 @@ async def extract_prices(page) -> list:
                 price, sale = None, None
 
                 if col.get("מחיר") is not None:
-                    el = sc(col["מחיר"])
-                    if el:
-                        price = parse_price(await el.inner_text())
+                    el2 = sc(col["מחיר"])
+                    if el2:
+                        price = parse_price(await el2.inner_text())
 
                 if col.get("מבצע") is not None:
-                    el = sc(col["מבצע"])
-                    if el:
-                        txt = await el.inner_text()
+                    el2 = sc(col["מבצע"])
+                    if el2:
+                        txt = await el2.inner_text()
                         m = re.search(r"\*\s*(\d+[.,]\d+)", txt) or re.search(r"\*\s*(\d+)", txt)
                         if m:
                             sale = float(m.group(1).replace(",", "."))
@@ -138,6 +161,7 @@ async def extract_prices(page) -> list:
                         "price":     price,
                         "sale":      sale,
                         "effective": effective,
+                        "section":   section_for_this_table,
                     })
     except Exception:
         pass
@@ -557,7 +581,42 @@ def download(job_id):
     path = jobs[job_id].get("result_path")
     if not path or not Path(path).exists():
         return jsonify({"error": "קובץ לא מוכן"}), 400
-    return send_file(path, as_attachment=True, download_name="chp_results.xlsx")
+
+    upload_path = jobs[job_id].get("upload_path")
+
+    # Send file first, then clean up
+    response = send_file(path, as_attachment=True, download_name="chp_results.xlsx")
+
+    @response.call_on_close
+    def cleanup():
+        try:
+            if upload_path and Path(upload_path).exists():
+                Path(upload_path).unlink()
+        except Exception:
+            pass
+        try:
+            if path and Path(path).exists():
+                Path(path).unlink()
+        except Exception:
+            pass
+        jobs.pop(job_id, None)
+
+    return response
+
+
+@app.route("/api/cleanup/<job_id>", methods=["POST"])
+def cleanup_job(job_id):
+    """Called by frontend after download to trigger server-side cleanup."""
+    job = jobs.pop(job_id, None)
+    if job:
+        for key in ("upload_path", "result_path"):
+            p = job.get(key)
+            if p:
+                try:
+                    Path(p).unlink(missing_ok=True)
+                except Exception:
+                    pass
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
