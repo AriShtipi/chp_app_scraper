@@ -361,7 +361,7 @@ def write_results(products, cities, output_path):
     fixed_headers = [
         "קטגוריה", "שם פריט", "ברקוד",
         'מחיר קנייה\n(ללא מע"מ)',
-        f'מחיר קנייה\n(+מע"מ {int((VAT-1)*100)}%)'
+        f'מחיר קנייה\n(+מע"מ {round((VAT-1)*100)}%)'
     ]
     for ci, h in enumerate(fixed_headers, 1):
         c(2, ci, h, bold=True, bg=BLUE, fg=WHITE, align="center", wrap=True)
@@ -476,7 +476,12 @@ def write_results(products, cities, output_path):
             for n in range(TOP_N_LOCAL):
                 if n < len(local_prices):
                     e = local_prices[n]
-                    label = clean_text(e.get("store") or e.get("network") or "—")
+                    network_clean = clean_text(e.get("network") or "")
+                    store_clean   = clean_text(e.get("store")   or "")
+                    if network_clean and store_clean and network_clean != store_clean:
+                        label = f"{network_clean} - {store_clean}"
+                    else:
+                        label = network_clean or store_clean or "—"
                     pval  = e["effective"]
                     if local_min is None or pval < local_min:
                         local_min = pval
@@ -499,7 +504,12 @@ def write_results(products, cities, output_path):
             for n in range(TOP_N_ONLINE):
                 if n < len(online_prices):
                     e = online_prices[n]
-                    label = clean_text(e.get("store") or e.get("network") or "—")
+                    network_clean = clean_text(e.get("network") or "")
+                    store_clean   = clean_text(e.get("store")   or "")
+                    if network_clean and store_clean and network_clean != store_clean:
+                        label = f"{network_clean} - {store_clean}"
+                    else:
+                        label = network_clean or store_clean or "—"
                     pval  = e["effective"]
                     if online_min is None or pval < online_min:
                         online_min = pval
