@@ -29,9 +29,9 @@ TOP_N_LOCAL  = int(os.environ.get("TOP_N_LOCAL", 2))   # חנויות פיזיו
 TOP_N_ONLINE = int(os.environ.get("TOP_N_ONLINE", 1))  # אונליין
 
 DEFAULT_CITIES = [
-    {"name": "טירת כרמל", "code1": "9000", "code2": "2100"},
-    {"name": "אריאל",      "code1": "9000", "code2": "3600"},
-    {"name": "ביתר עילית", "code1": "9000", "code2": "3400"},
+    {"name": "טירת כרמל ", "code1": "9000", "code2": "2100"},
+    {"name": "אריאל ",     "code1": "9000", "code2": "3570"},
+    {"name": "ביתר עילית ", "code1": "9000", "code2": "3780"},
 ]
 
 # ────────────────────────────────────────
@@ -292,6 +292,24 @@ def run_scrape_thread(job_id, products, cities, delay, batch_size):
 # ────────────────────────────────────────
 # Excel writer
 # ────────────────────────────────────────
+def clean_text(s):
+    """
+    Remove zero-width Unicode chars and injected ASCII letters that CHP inserts
+    into store names as anti-scraping obfuscation.
+    e.g. '‌‌ח‌‌י‌‍z‌‍‍פה' → 'חיפה'
+    """
+    import re
+    if not s:
+        return s
+    # Remove zero-width and invisible Unicode chars
+    s = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\u00ad\u2060\ufeff\u034f\u180e]', '', s)
+    # Remove injected ASCII letters/digits (a-z, A-Z, 0-9) between Hebrew words
+    s = re.sub(r'[a-zA-Z0-9]', '', s)
+    # Collapse multiple spaces
+    s = re.sub(r' {2,}', ' ', s)
+    return s.strip()
+
+
 def write_results(products, cities, output_path):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -458,7 +476,7 @@ def write_results(products, cities, output_path):
             for n in range(TOP_N_LOCAL):
                 if n < len(local_prices):
                     e = local_prices[n]
-                    label = e.get("store") or e.get("network") or "—"
+                    label = clean_text(e.get("store") or e.get("network") or "—")
                     pval  = e["effective"]
                     if local_min is None or pval < local_min:
                         local_min = pval
@@ -481,7 +499,7 @@ def write_results(products, cities, output_path):
             for n in range(TOP_N_ONLINE):
                 if n < len(online_prices):
                     e = online_prices[n]
-                    label = e.get("store") or e.get("network") or "—"
+                    label = clean_text(e.get("store") or e.get("network") or "—")
                     pval  = e["effective"]
                     if online_min is None or pval < online_min:
                         online_min = pval
