@@ -224,7 +224,7 @@ async def extract_prices(page):
                     const priceCell = getCell('מחיר');
                     if (priceCell) {
                         const raw = priceCell.textContent.trim().replace(/,/g, '');
-                        const m = raw.match(/(\d+\.\d+)/);
+                        const m = raw.match(/(\d+(?:\.\d+)?)/);
                         if (m) price = parseFloat(m[1]);
                     }
 
@@ -232,7 +232,7 @@ async def extract_prices(page):
                     const saleCell = getCell('מבצע');
                     if (saleCell) {
                         const saleTxt = saleCell.textContent.replace(/,/g, '').trim();
-                        const m = saleTxt.match(/(\d+\.\d+)\s*\*/);
+                        const m = saleTxt.match(/(\d+(?:\.\d+)?)\s*\*/);
                         if (m) sale = parseFloat(m[1]);
                     }
 
@@ -255,7 +255,7 @@ async def extract_prices(page):
                 const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
                 if (headers.includes('אתר אינטרנט')) isOnline = true;
 
-                if (isOnline || (!localHasNoResults && !isOnline)) {
+                if (isOnline || (!isOnline && headers.includes("מחיר"))) {
                     parseTable(table, isOnline);
                 }
             });
