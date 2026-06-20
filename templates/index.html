@@ -3,134 +3,221 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CHP מחיר גורף 🛒</title>
+<title>CHP · מחיר גורף</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root {
-  --blue:#1a73e8; --blue-dark:#1557b0; --blue-light:#e8f0fe;
-  --green:#1e8e3e; --green-light:#e6f4ea;
-  --red:#d93025; --red-light:#fce8e6;
-  --gray:#5f6368; --border:#dadce0; --bg:#f8f9fa; --white:#fff;
-  --radius:12px; --shadow:0 2px 12px rgba(0,0,0,.08);
+:root{
+  --ink:#14171b;
+  --ink-soft:#6b7280;
+  --paper:#eef1ec;
+  --line:#d8dbd3;
+  --card:#ffffff;
+  --laser:#ff3b30;
+  --laser-dim:#ffe1de;
+  --tag:#ffc83d;
+  --tag-dim:#fff3d6;
+  --ok:#1e8e5a;
+  --ok-dim:#dcf0e6;
+  --radius:14px;
+  --radius-sm:9px;
+  --shadow:0 1px 2px rgba(20,23,27,.04), 0 10px 28px rgba(20,23,27,.07);
+  --font-head:'Heebo', system-ui, sans-serif;
+  --font-mono:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:#202124;min-height:100vh;direction:rtl}
-header{background:var(--blue);padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-header h1{color:#fff;font-size:18px;font-weight:600;display:flex;align-items:center;gap:10px}
-header small{color:rgba(255,255,255,.75);font-size:12px}
-main{max-width:880px;margin:28px auto;padding:0 16px}
-.card{background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;margin-bottom:18px}
-.card-title{font-size:14px;font-weight:600;color:#202124;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.card-title span{font-size:17px}
+body{font-family:var(--font-head);background:var(--paper);color:var(--ink);min-height:100vh;direction:rtl}
+:focus-visible{outline:2.5px solid var(--laser);outline-offset:2px}
 
-/* Drop zone */
-.drop-zone{border:2.5px dashed var(--border);border-radius:var(--radius);padding:44px 24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
-.drop-zone:hover,.drop-zone.drag-over{border-color:var(--blue);background:var(--blue-light)}
-.drop-zone.has-file{border-color:var(--green);background:var(--green-light)}
+/* barcode bar texture, reused as decoration */
+.bars{
+  background-repeat:repeat-x;
+  background-size:28px 100%;
+  background-image:repeating-linear-gradient(90deg,
+    currentColor 0 2px, transparent 2px 4px,
+    currentColor 4px 5px, transparent 5px 9px,
+    currentColor 9px 12px, transparent 12px 13px,
+    currentColor 13px 14px, transparent 14px 19px,
+    currentColor 19px 22px, transparent 22px 23px,
+    currentColor 23px 24px, transparent 24px 28px);
+}
+
+/* ── header ── */
+header{background:var(--ink)}
+.header-inner{max-width:920px;margin:0 auto;padding:18px 20px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-mark{width:34px;height:34px;border-radius:8px;background:var(--laser);color:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.brand-mark .bars{width:18px;height:14px;color:var(--ink)}
+.brand-text h1{color:#fff;font-size:17px;font-weight:800;letter-spacing:.2px}
+.brand-text small{color:#9aa1ab;font-size:11.5px;font-family:var(--font-mono)}
+.scan-strip{height:6px;color:var(--paper);opacity:.9}
+
+/* ── layout ── */
+main{max-width:920px;margin:30px auto 60px;padding:0 18px}
+
+.stat-strip{display:none;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 8px;margin-bottom:20px;box-shadow:var(--shadow)}
+.stat{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.stat-num{font-family:var(--font-mono);font-weight:700;font-size:21px;color:var(--ink)}
+.stat-label{font-size:11px;color:var(--ink-soft);letter-spacing:.2px}
+.stat-div{width:1px;height:30px;background:var(--line)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px}
+.card-title{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.eyebrow{font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:.4px;background:var(--ink);color:var(--paper);padding:3px 8px;border-radius:5px;flex-shrink:0}
+
+.tear{display:flex;align-items:center;gap:8px;margin:14px 0;color:var(--line)}
+.tear::before,.tear::after{content:"";flex:1;height:0;border-top:2px dashed var(--line)}
+.tear-dot{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--line);flex-shrink:0}
+
+/* ── drop zone ── */
+.drop-zone{position:relative;border:1.5px dashed var(--line);border-radius:var(--radius);padding:40px 24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--paper)}
+.drop-zone:hover{background:var(--laser-dim)}
+.drop-zone.drag-over{background:var(--laser-dim)}
+.drop-zone.has-file{background:var(--ok-dim)}
 .drop-zone input{display:none}
-.drop-icon{font-size:42px;margin-bottom:10px;display:block}
-.drop-title{font-size:15px;font-weight:600;margin-bottom:4px}
-.drop-sub{font-size:12px;color:var(--gray)}
-.drop-filename{display:none;margin-top:10px;font-size:13px;font-weight:600;color:var(--green);align-items:center;justify-content:center;gap:6px}
+.corner{position:absolute;width:16px;height:16px;border-color:var(--ink-soft);transition:border-color .2s}
+.corner-tl{top:12px;left:12px;border-top:2.5px solid;border-left:2.5px solid}
+.corner-tr{top:12px;right:12px;border-top:2.5px solid;border-right:2.5px solid}
+.corner-bl{bottom:12px;left:12px;border-bottom:2.5px solid;border-left:2.5px solid}
+.corner-br{bottom:12px;right:12px;border-bottom:2.5px solid;border-right:2.5px solid}
+.drop-zone:hover .corner,.drop-zone.drag-over .corner{border-color:var(--laser)}
+.drop-zone.has-file .corner{border-color:var(--ok)}
+.drop-icon-mark{width:48px;height:30px;color:var(--ink);margin:0 auto 14px}
+.drop-title{font-size:15px;font-weight:700;margin-bottom:4px}
+.drop-sub{font-size:12px;color:var(--ink-soft)}
+.drop-filename{display:none;margin-top:12px;font-size:13px;font-weight:700;color:var(--ok);align-items:center;justify-content:center;gap:6px;font-family:var(--font-mono)}
 .drop-filename.show{display:flex}
 
-/* Cities */
-.cities-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:14px}
-.city-card{border:1.5px solid var(--border);border-radius:10px;padding:10px 13px;display:flex;align-items:center;gap:9px;cursor:pointer;transition:all .15s;user-select:none}
-.city-card:hover,.city-card.active{border-color:var(--blue);background:var(--blue-light)}
-.check{width:20px;height:20px;border:2px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;transition:all .15s}
-.city-card.active .check{background:var(--blue);border-color:var(--blue);color:#fff}
-.city-info{flex:1}
-.city-name{font-size:13px;font-weight:600}
-.city-code{font-size:11px;color:var(--gray)}
-.city-del{color:#ccc;font-size:15px;cursor:pointer;padding:3px 5px;border-radius:4px}
-.city-del:hover{color:var(--red);background:var(--red-light)}
+/* ── cities ── */
+.cities-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:16px}
+.city-card{position:relative;border:1.5px solid var(--line);border-radius:10px;padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:all .15s;user-select:none;background:var(--paper)}
+.city-card:hover{border-color:var(--ink-soft)}
+.city-card.active{border-color:var(--tag);background:var(--tag-dim)}
+.check{width:20px;height:20px;border:2px solid var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:700;color:#fff;transition:all .15s}
+.city-card.active .check{background:var(--ink);border-color:var(--ink)}
+.city-info{flex:1;min-width:0}
+.city-name{font-size:13px;font-weight:700}
+.city-code{font-size:11px;color:var(--ink-soft);font-family:var(--font-mono)}
+.city-del{color:#bbb;font-size:14px;cursor:pointer;padding:3px 6px;border-radius:4px;flex-shrink:0}
+.city-del:hover{color:var(--laser);background:var(--laser-dim)}
 .add-row{display:flex;gap:8px;flex-wrap:wrap}
-.add-row input{flex:1;min-width:110px;padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;font-family:inherit;direction:rtl}
-.add-row input:focus{border-color:var(--blue)}
-.btn-add{padding:7px 14px;background:var(--blue-light);color:var(--blue);border:1.5px solid var(--blue);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit}
-.btn-add:hover{background:var(--blue);color:#fff}
+.add-row input{flex:1;min-width:110px;padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;outline:none;font-family:inherit;direction:rtl;background:var(--paper)}
+.add-row input:focus{border-color:var(--ink)}
+.btn-add{padding:8px 16px;background:var(--ink);color:#fff;border:1.5px solid var(--ink);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;display:flex;align-items:center;gap:6px}
+.btn-add:hover{background:#000}
+.hint{font-size:11.5px;color:var(--ink-soft);margin-top:10px;font-family:var(--font-mono)}
+.hint b{color:var(--ink);font-family:var(--font-head);font-weight:700}
 
-/* Settings */
-.settings-row{display:flex;gap:14px;flex-wrap:wrap}
-.setting{display:flex;flex-direction:column;gap:4px}
-.setting label{font-size:11px;color:var(--gray);font-weight:500}
-.setting input{padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;width:90px;outline:none;font-family:inherit}
-.setting input:focus{border-color:var(--blue)}
+/* ── settings ── */
+.settings-row{display:flex;gap:16px;flex-wrap:wrap}
+.setting{display:flex;flex-direction:column;gap:5px}
+.setting label{font-size:11px;color:var(--ink-soft);font-weight:600}
+.setting input{padding:7px 11px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;width:88px;outline:none;font-family:var(--font-mono);background:var(--paper)}
+.setting input:focus{border-color:var(--ink)}
 
-/* Info pills */
-.pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.pill{background:var(--white);border:1px solid var(--border);border-radius:20px;padding:5px 13px;font-size:12px;color:var(--gray);display:flex;align-items:center;gap:5px}
-.pill strong{color:#202124}
+/* ── start button ── */
+.btn-start{width:100%;padding:16px;background:var(--laser);color:#fff;border:none;border-radius:var(--radius);font-size:15px;font-weight:800;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:10px;font-family:inherit;margin-top:20px}
+.btn-start .bars{width:18px;height:16px;color:#fff}
+.btn-start:hover:not(:disabled){background:#e0291f;transform:translateY(-1px);box-shadow:0 6px 18px rgba(255,59,48,.3)}
+.btn-start:disabled{background:#c3c6c2;cursor:not-allowed;transform:none;box-shadow:none}
 
-/* Start btn */
-.btn-start{width:100%;padding:13px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);font-size:15px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:9px;font-family:inherit}
-.btn-start:hover{background:var(--blue-dark);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.15)}
-.btn-start:disabled{background:#bbb;cursor:not-allowed;transform:none;box-shadow:none}
-
-/* Progress */
-.prog-wrap{background:#e8eaed;border-radius:100px;height:10px;overflow:hidden;margin:12px 0}
-.prog-bar{height:100%;background:linear-gradient(90deg,var(--blue),#4da3ff);border-radius:100px;transition:width .4s ease;width:0%}
-.prog-stats{display:flex;justify-content:space-between;font-size:12px;color:var(--gray)}
-.prog-log{margin-top:10px;font-size:13px;color:var(--gray);background:var(--bg);border-radius:8px;padding:9px 13px;display:flex;align-items:center;gap:8px;min-height:36px}
-.spinner{width:15px;height:15px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+/* ── progress ── */
+.scan-track{position:relative;background:var(--line);border-radius:100px;height:14px;overflow:hidden;margin:14px 0}
+.prog-bar{height:100%;background:linear-gradient(90deg,var(--laser),var(--tag));border-radius:100px;transition:width .4s ease;width:0%}
+.laser-sweep{position:absolute;top:-3px;bottom:-3px;width:3px;background:var(--laser);box-shadow:0 0 9px var(--laser);left:0;animation:sweep 1.7s linear infinite}
+@keyframes sweep{0%{left:0%}50%{left:96%}100%{left:0%}}
+@media(prefers-reduced-motion:reduce){.laser-sweep{animation:none;display:none}}
+.prog-stats{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);font-family:var(--font-mono)}
+.prog-log{margin-top:12px;font-size:13px;color:var(--ink-soft);background:var(--paper);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:9px;min-height:38px}
+.spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--laser);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spinner{animation-duration:1.6s}}
 
-/* Done */
-.done-box{background:var(--green-light);border:1.5px solid #81c995;border-radius:var(--radius);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.done-box h3{font-size:15px;font-weight:700;color:var(--green)}
-.done-box p{font-size:12px;color:#3c763d;margin-top:3px}
-.btn-dl{padding:11px 26px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;text-decoration:none;font-family:inherit;transition:all .15s}
-.btn-dl:hover{background:#157235;transform:translateY(-1px)}
+/* ── done / error ── */
+.done-box{background:var(--ok-dim);border:1.5px solid var(--ok);border-radius:var(--radius);padding:20px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.done-head{display:flex;align-items:center;gap:12px}
+.done-head svg{color:var(--ok);flex-shrink:0}
+.done-box h3{font-size:15px;font-weight:800;color:var(--ok)}
+.done-box p{font-size:12.5px;color:#2f5d47;margin-top:3px;font-family:var(--font-mono)}
+.btn-dl{padding:12px 26px;background:var(--ok);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;text-decoration:none;font-family:inherit;transition:all .15s}
+.btn-dl:hover{background:#176b46;transform:translateY(-1px)}
 
-/* Error */
-.err-box{background:var(--red-light);border:1.5px solid #f5c6cb;border-radius:var(--radius);padding:14px 18px;color:var(--red);font-size:13px;display:flex;align-items:center;gap:9px}
+.err-box{background:#fff;border:1.5px solid var(--laser);border-radius:var(--radius);padding:16px 18px;color:var(--laser);font-size:13px;display:flex;align-items:center;gap:10px}
+.err-box svg{flex-shrink:0}
+.err-box span{color:var(--ink)}
 
-@media(max-width:600px){main{padding:0 10px}.card{padding:16px}.drop-zone{padding:28px 14px}}
+@media(max-width:600px){
+  main{padding:0 12px}
+  .card{padding:18px}
+  .drop-zone{padding:30px 14px}
+  .done-box{flex-direction:column;align-items:flex-start}
+}
 </style>
 </head>
 <body>
 <header>
-  <h1>🛒 <span>CHP מחיר גורף</span></h1>
-  <small>השוואת מחירים אוטומטית • חנויות + אונליין</small>
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-mark"><div class="bars"></div></div>
+      <div class="brand-text">
+        <h1>CHP מחיר גורף</h1>
+        <small>סריקת מחירים אוטומטית · חנויות + אונליין</small>
+      </div>
+    </div>
+  </div>
+  <div class="bars scan-strip"></div>
 </header>
+
 <main>
 
-  <div class="pills" id="pills" style="display:none">
-    <div class="pill">📦 <strong id="pProd">0</strong> מוצרים</div>
-    <div class="pill">🏙 <strong id="pCities">0</strong> ערים</div>
-    <div class="pill">⏱ <strong id="pTime">~0</strong> דקות</div>
+  <div class="stat-strip" id="pills">
+    <div class="stat"><span class="stat-num" id="pProd">0</span><span class="stat-label">מוצרים</span></div>
+    <div class="stat-div"></div>
+    <div class="stat"><span class="stat-num" id="pCities">0</span><span class="stat-label">ערים</span></div>
+    <div class="stat-div"></div>
+    <div class="stat"><span class="stat-num" id="pTime">~0</span><span class="stat-label">דקות משוער</span></div>
   </div>
 
   <!-- Upload -->
   <div class="card">
-    <div class="card-title"><span>📂</span> העלאת קובץ מחירון</div>
+    <div class="card-title"><span class="eyebrow">01</span> קובץ המחירון</div>
     <div class="drop-zone" id="dropZone">
+      <span class="corner corner-tl"></span>
+      <span class="corner corner-tr"></span>
+      <span class="corner corner-bl"></span>
+      <span class="corner corner-br"></span>
       <input type="file" id="fileInput" accept=".xlsx,.xls" />
-      <span class="drop-icon">📊</span>
+      <div class="bars drop-icon-mark"></div>
       <div class="drop-title">גרור קובץ אקסל לכאן</div>
       <div class="drop-sub">או לחץ לבחירת קובץ · XLSX / XLS</div>
-      <div class="drop-filename" id="dropFilename"><span>✅</span><span id="fileNameTxt"></span></div>
+      <div class="drop-filename" id="dropFilename"><span>✓</span><span id="fileNameTxt"></span></div>
     </div>
   </div>
 
+  <div class="tear"><span class="tear-dot"></span><span class="tear-dot"></span></div>
+
   <!-- Cities -->
   <div class="card">
-    <div class="card-title"><span>🏙</span> ערים לחיפוש</div>
+    <div class="card-title"><span class="eyebrow">02</span> ערים לבדיקה</div>
     <div class="cities-grid" id="citiesGrid"></div>
     <div class="add-row">
       <input type="text"   id="nCity"  placeholder="שם עיר בעברית" />
       <input type="text"   id="nCode1" placeholder="קוד 1" style="width:80px" />
       <input type="text"   id="nCode2" placeholder="קוד 2" style="width:80px" />
-      <button class="btn-add" onclick="addCity()">+ הוסף עיר</button>
+      <button class="btn-add" onclick="addCity()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        הוסף עיר
+      </button>
     </div>
-    <div style="font-size:11px;color:var(--gray);margin-top:8px">
-      💡 URL: chp.co.il/<b>שם עיר</b>/<b>קוד1</b>/<b>קוד2</b>/ברקוד/0
-    </div>
+    <div class="hint">כתובת הסריקה נבנית כך: chp.co.il/<b>עיר</b>/<b>קוד 1</b>/<b>קוד 2</b>/ברקוד/0</div>
   </div>
+
+  <div class="tear"><span class="tear-dot"></span><span class="tear-dot"></span></div>
 
   <!-- Settings -->
   <div class="card">
-    <div class="card-title"><span>⚙️</span> הגדרות סריקה</div>
+    <div class="card-title"><span class="eyebrow">03</span> הגדרות סריקה</div>
     <div class="settings-row">
       <div class="setting">
         <label>השהייה (שניות)</label>
@@ -151,27 +238,42 @@ main{max-width:880px;margin:28px auto;padding:0 16px}
     </div>
   </div>
 
-  <button class="btn-start" id="btnStart" disabled onclick="startScan()">🔍 התחל סריקה</button>
+  <button class="btn-start" id="btnStart" disabled onclick="startScan()">
+    <div class="bars"></div>
+    התחל סריקה
+  </button>
 
   <!-- Progress -->
-  <div class="card" id="progSection" style="display:none;margin-top:18px">
-    <div class="card-title"><span>⏳</span> סריקה בתהליך...</div>
-    <div class="prog-wrap"><div class="prog-bar" id="progBar"></div></div>
+  <div class="card" id="progSection" style="display:none;margin-top:20px">
+    <div class="card-title"><span class="eyebrow">··</span> סריקה בתהליך</div>
+    <div class="scan-track">
+      <div class="prog-bar" id="progBar"></div>
+      <div class="laser-sweep"></div>
+    </div>
     <div class="prog-stats"><span id="progCount">0 / 0</span><span id="progPct">0%</span></div>
-    <div class="prog-log" id="progLog"><div class="spinner"></div><span id="progTxt">מכין...</span></div>
+    <div class="prog-log"><div class="spinner"></div><span id="progTxt">מכין...</span></div>
   </div>
 
   <!-- Done -->
-  <div id="doneSection" style="display:none;margin-top:18px">
+  <div id="doneSection" style="display:none;margin-top:20px">
     <div class="done-box">
-      <div><h3>✅ הסריקה הושלמה!</h3><p id="doneMsg"></p></div>
-      <a class="btn-dl" id="btnDl" href="#">⬇ הורד אקסל</a>
+      <div class="done-head">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.8 10A10 10 0 1 1 17 3.34"/><path d="m9 11 3 3L22 4"/></svg>
+        <div><h3>הסריקה הושלמה</h3><p id="doneMsg"></p></div>
+      </div>
+      <a class="btn-dl" id="btnDl" href="#">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        הורד אקסל
+      </a>
     </div>
   </div>
 
   <!-- Error -->
-  <div id="errSection" style="display:none;margin-top:18px">
-    <div class="err-box"><span>⚠️</span><span id="errTxt"></span></div>
+  <div id="errSection" style="display:none;margin-top:20px">
+    <div class="err-box">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+      <span id="errTxt"></span>
+    </div>
   </div>
 
 </main>
@@ -188,7 +290,7 @@ function renderCities(){
   document.getElementById('citiesGrid').innerHTML = cities.map((c,i)=>`
     <div class="city-card ${c.active?'active':''}" onclick="toggleCity(${i})">
       <div class="check">${c.active?'✓':''}</div>
-      <div class="city-info"><div class="city-name">${c.name}</div><div class="city-code">${c.code1} / ${c.code2}</div></div>
+      <div class="city-info"><div class="city-name">${c.name}</div><div class="city-code">${c.code1} · ${c.code2}</div></div>
       <span class="city-del" onclick="event.stopPropagation();deleteCity(${i})">✕</span>
     </div>`).join('');
   updatePills();
@@ -234,7 +336,7 @@ async function handleFile(file){
     const data=await res.json();
     if(data.error)throw new Error(data.error);
     jobId=data.job_id; prodCount=data.product_count;
-    document.querySelector('.drop-title').textContent='✓ הקובץ הועלה';
+    document.querySelector('.drop-title').textContent='הקובץ נטען בהצלחה';
     document.getElementById('btnStart').disabled=false;
     updatePills();
   }catch(e){showErr(e.message);dropZone.classList.remove('has-file')}
@@ -275,9 +377,8 @@ async function pollStatus(){
       clearInterval(pollTimer);
       document.getElementById('progSection').style.display='none';
       document.getElementById('doneSection').style.display='block';
-      document.getElementById('doneMsg').textContent=`סרקו ${prodCount} מוצרים ב-${cities.filter(c=>c.active).length} ערים`;
+      document.getElementById('doneMsg').textContent=`נסרקו ${prodCount} מוצרים ב-${cities.filter(c=>c.active).length} ערים`;
       document.getElementById('btnDl').href=`/api/download/${jobId}`;
-      // Auto-reset after download click
       document.getElementById('btnDl').addEventListener('click',()=>{
         setTimeout(()=>location.reload(),3000);
       },{once:true});

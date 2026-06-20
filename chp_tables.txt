@@ -1,0 +1,77 @@
+
+============================================================
+TABLE 0
+Nearest heading: בירה לאגר מילר, שישיה 6 * 330 מ"ל (יצרן/מותג: מילר, ברקוד: 8593868004713) הוסף לרשימה
+Headers: []
+Rows (first 5):
+  Row 0:
+    Cell 0: text='' | html='<img data-uri="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIwAAACMCAYAAACuwEE+AACAAElEQVR42tT9d5RlyXXeif4i4pjrb/rMyszyrr3vRsMTAEmQ8ARJgUYUjaQZSiOzpDecWU/rPUkzszTSiBrqSRpxZChSJEESBA1EeIAN241GN9p3dXV'
+    Cell 1: text='בירה לאגר מילר, שישיה 6 * 330 מ"ל (יצרן/מותג: מילר, ברקוד: 8593868004713) הוסף לרשימה' | html='<h3>בירה לאגר מילר, שישיה 6 * 330 מ"ל <span style="color:grey">(יצרן/מותג: מילר, ברקוד: 8593868004713)</span> <br><a href="#" onclick="add_to_list_from_compare_results()">הוסף לרשימה</a></h3>'
+
+============================================================
+TABLE 1
+Nearest heading: בירה לאגר מילר, שישיה 6 * 330 מ"ל (יצרן/מותג: מילר, ברקוד: 8593868004713) הוסף לרשימה
+Headers: ['רשת', 'שם החנות', 'כתובת החנות', 'מבצע', 'מחיר']
+Rows (first 5):
+  Row 0:
+    Cell 0: text='רשת' | html='רשת'
+    Cell 1: text='שם החנות' | html='שם החנות'
+    Cell 2: text='כתובת החנות' | html='כתובת החנות'
+    Cell 3: text='מבצע' | html='מבצע'
+    Cell 4: text='מחיר' | html='מחיר'
+  Row 1:
+    Cell 0: text='רמי לוי' | html='רמי לוי'
+    Cell 1: text='קניון עזריאלי חיפה' | html='קניון עזריאלי חיפה'
+    Cell 2: text='דרך משה פלימן 4, חיפה' | html='דרך משה פלימן 4, חיפה'
+    Cell 3: text='27.50 *' | html='<button type="button" class="btn btn-danger btn-xs btn-discount" data-discount-desc="2 יחידות ב- 55.00 ש&quot;ח (מחיר ליחידה 27.50 ש&quot;ח)&lt;BR&gt;בתוקף עד 04/07/2026&lt;BR&gt;" data-discount-title'
+    Cell 4: text='41.90' | html='41.90'
+  Row 2:
+    Cell 0: text='דרך משה פלימן 4, חיפה' | html='דרך משה פלימן 4, חיפה'
+  Row 3:
+    Cell 0: text='מחסני מזון' | html='מחסני מזון'
+    Cell 1: text='טירת הכרמל' | html='טירת הכרמל'
+    Cell 2: text='לח"י 8, טירת כרמל' | html='לח"י 8, טירת כרמל'
+    Cell 3: text='29.90 *' | html='<button type="button" class="btn btn-danger btn-xs btn-discount" data-discount-desc="29.90 ש&quot;ח ליחידה&lt;BR&gt;בתוקף עד 04/07/2026" data-discount-title="מחסני מזון" title="מחיר מבצע במחסני מזון ט'
+    Cell 4: text='45.90' | html='45.90'
+  Row 4:
+    Cell 0: text='לח"י 8, טירת כרמל' | html='לח"י 8, טירת כרמל'
+  Row 5:
+    Cell 0: text='סטופמרקט' | html='סטופמרקט'
+    Cell 1: text='קסטרא' | html='קסטרא'
+    Cell 2: text='דרך משה פלימן 8, חיפה' | html='דרך משה פלימן 8, חיפה'
+    Cell 3: text='' | html='&nbsp;'
+    Cell 4: text='34.90' | html='34.90'
+
+============================================================
+TABLE 2
+Nearest heading: בירה לאגר מילר, שישיה 6 * 330 מ"ל (יצרן/מותג: מילר, ברקוד: 8593868004713) הוסף לרשימה
+Headers: ['רשת', 'שם החנות', 'אתר אינטרנט', 'מבצע', 'מחיר']
+Rows (first 5):
+  Row 0:
+    Cell 0: text='רשת' | html='רשת'
+    Cell 1: text='שם החנות' | html='שם החנות'
+    Cell 2: text='אתר אינטרנט' | html='אתר אינטרנט'
+    Cell 3: text='מבצע' | html='מבצע'
+    Cell 4: text='מחיר' | html='מחיר'
+  Row 1:
+    Cell 0: text='קשת טעמים אונליין' | html='קשת טעמים אונליין'
+    Cell 1: text='קשת טעמים אונליין' | html='<a href="https://www.keshet-teamim.co.il/?catalogProduct=6225318" target="_blank">קשת טעמים אונליין</a>'
+    Cell 2: text='https://www.keshet-teamim.co.il/' | html='https://www.keshet-teamim.co.il/'
+    Cell 3: text='29.90 *' | html='<button type="button" class="btn btn-danger btn-xs btn-discount" data-discount-desc="29.90 ש&quot;ח ליחידה &lt;BR&gt;בתוקף עד 30/06/2026&lt;BR&gt;" data-discount-title="קשת טעמים אונליין">29.90 *</but'
+    Cell 4: text='39.90' | html='39.90'
+  Row 2:
+    Cell 0: text='אתר: https://www.keshet-teamim.co.il/' | html='אתר: https://www.keshet-teamim.co.il/'
+  Row 3:
+    Cell 0: text='טיב טעם אונליין' | html='טיב טעם אונליין'
+    Cell 1: text='טיב טעם בקליק' | html='<a href="https://www.tivtaam.co.il/?catalogProduct=6225318" target="_blank">טיב טעם בקליק</a>'
+    Cell 2: text='https://www.tivtaam.co.il/' | html='https://www.tivtaam.co.il/'
+    Cell 3: text='מבצע' | html='<button type="button" class="btn btn-danger btn-xs btn-discount" data-discount-desc="לחברי מועדון לקוחות הרשת&lt;BR&gt;31.90 ש&quot;ח ליחידה&lt;BR&gt;בתוקף עד 12/07/2026" data-discount-title="טיב טעם '
+    Cell 4: text='42.90' | html='42.90'
+  Row 4:
+    Cell 0: text='אתר: https://www.tivtaam.co.il/' | html='אתר: https://www.tivtaam.co.il/'
+  Row 5:
+    Cell 0: text='רמי לוי באינטרנט' | html='רמי לוי באינטרנט'
+    Cell 1: text='רמי לוי באינטרנט' | html='<a href="https://www.rami-levy.co.il/he/online/search?q=8593868004713" target="_blank">רמי לוי באינטרנט</a>'
+    Cell 2: text='https://www.rami-levy.co.il' | html='https://www.rami-levy.co.il'
+    Cell 3: text='' | html='&nbsp;'
+    Cell 4: text='32.50' | html='32.50'

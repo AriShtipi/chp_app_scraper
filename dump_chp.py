@@ -10,10 +10,10 @@ import asyncio
 from playwright.async_api import async_playwright
 
 # ─── שנה לפי הצורך ───
-BARCODE = "5410228217732"          # בירה סטלה ארטואה
-CITY    = "אריאל"
+BARCODE = "8593868004713"          # בירה סטלה ארטואה
+CITY    = "טירת כרמל"
 CODE1   = "9000"
-CODE2   = "3600"
+CODE2   = "2100"
 # ──────────────────────
 
 async def main():
